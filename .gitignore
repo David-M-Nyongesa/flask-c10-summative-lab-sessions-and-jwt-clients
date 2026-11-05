@@ -7,3 +7,4 @@ instance/
 .pytest_cache/
 node_modules/
 .DS_Store
+.mypy_cache/
