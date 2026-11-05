@@ -19,10 +19,3 @@ def client():
         db.session.remove()
         db.drop_all()
 
-
-def signup(client, username, password="secret"):
-    return client.post("/signup", json={
-        "username": username,
-        "password": password,
-        "password_confirmation": password,
-    })

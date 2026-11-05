@@ -1,4 +1,12 @@
-from conftest import signup
+from models import User
+
+
+def signup(client, username, password="secret"):
+    return client.post("/signup", json={
+        "username": username,
+        "password": password,
+        "password_confirmation": password,
+    })
 
 
 def test_signup_logs_user_in(client):
@@ -16,8 +24,6 @@ def test_signup_rejects_duplicate_username(client):
 
 
 def test_password_is_hashed(client):
-    from models import User
-
     signup(client, "alice", "secret")
     user = User.query.filter_by(username="alice").first()
     assert user._password_hash != "secret"

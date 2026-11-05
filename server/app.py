@@ -1,39 +1,45 @@
 from flask import request, session
-from flask_restful import Resource
+from flask_restful import Resource, abort
 
 from config import app, db, api
 from models import User, Note
 from schemas import user_schema, note_schema, notes_schema
 
 
+# Every route except these needs a logged-in user
 @app.before_request
 def check_if_logged_in():
-    """Block every route except the public auth routes unless a user is logged in."""
     open_routes = ["signup", "login", "check_session"]
 
     if request.endpoint not in open_routes and not session.get("user_id"):
         return {"errors": ["Unauthorized. Please log in."]}, 401
 
 
+def find_note(id):
+    note = db.session.get(Note, id)
+
+    if not note:
+        abort(404, errors=["Note not found."])
+    if note.user_id != session["user_id"]:
+        abort(403, errors=["You can only access your own notes."])
+
+    return note
+
+
 class Signup(Resource):
     def post(self):
-        data = request.get_json() or {}
-        username = (data.get("username") or "").strip()
+        data = request.get_json()
+        username = data.get("username")
         password = data.get("password")
-        password_confirmation = data.get("password_confirmation")
 
-        errors = []
-        if not username:
-            errors.append("Username is required.")
-        if not password:
-            errors.append("Password is required.")
-        if password != password_confirmation:
-            errors.append("Password and password confirmation do not match.")
-        if username and User.query.filter_by(username=username).first():
-            errors.append("Username is already taken.")
+        if not username or not password:
+            return {"errors": ["Username and password are required."]}, 422
 
-        if errors:
-            return {"errors": errors}, 422
+        if password != data.get("password_confirmation"):
+            return {"errors": ["Passwords do not match."]}, 422
+
+        if User.query.filter_by(username=username).first():
+            return {"errors": ["Username is already taken."]}, 422
 
         user = User(username=username)
         user.password_hash = password
@@ -46,13 +52,13 @@ class Signup(Resource):
 
 class Login(Resource):
     def post(self):
-        data = request.get_json() or {}
+        data = request.get_json()
         username = data.get("username")
-        password = data.get("password") or ""
+        password = data.get("password")
 
         user = User.query.filter_by(username=username).first()
 
-        if user and user.authenticate(password):
+        if user and password and user.authenticate(password):
             session["user_id"] = user.id
             return user_schema.dump(user), 200
 
@@ -61,8 +67,7 @@ class Login(Resource):
 
 class CheckSession(Resource):
     def get(self):
-        user_id = session.get("user_id")
-        user = db.session.get(User, user_id) if user_id else None
+        user = User.query.filter_by(id=session.get("user_id")).first()
 
         if user:
             return user_schema.dump(user), 200
@@ -76,28 +81,13 @@ class Logout(Resource):
         return {}, 204
 
 
-def find_user_note(note_id):
-    """Return (note, error_response). Users may only touch their own notes."""
-    note = db.session.get(Note, note_id)
-
-    if not note:
-        return None, ({"errors": ["Note not found."]}, 404)
-    if note.user_id != session["user_id"]:
-        return None, ({"errors": ["You do not have permission to access this note."]}, 403)
-
-    return note, None
-
-
 class Notes(Resource):
     def get(self):
         page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 10, type=int), 50)
+        per_page = request.args.get("per_page", 10, type=int)
 
-        pagination = (
-            Note.query.filter_by(user_id=session["user_id"])
-            .order_by(Note.id.desc())
-            .paginate(page=page, per_page=per_page, error_out=False)
-        )
+        query = Note.query.filter_by(user_id=session["user_id"]).order_by(Note.id.desc())
+        pagination = query.paginate(page=page, per_page=per_page, max_per_page=50, error_out=False)
 
         return {
             "notes": notes_schema.dump(pagination.items),
@@ -108,14 +98,10 @@ class Notes(Resource):
         }, 200
 
     def post(self):
-        data = request.get_json() or {}
+        data = request.get_json()
 
         try:
-            note = Note(
-                title=data.get("title"),
-                content=data.get("content"),
-                user_id=session["user_id"],
-            )
+            note = Note(title=data.get("title"), content=data.get("content"), user_id=session["user_id"])
         except ValueError as e:
             return {"errors": [str(e)]}, 422
 
@@ -126,22 +112,18 @@ class Notes(Resource):
 
 class NoteById(Resource):
     def get(self, id):
-        note, error = find_user_note(id)
-        if error:
-            return error
+        note = find_note(id)
         return note_schema.dump(note), 200
 
     def patch(self, id):
-        note, error = find_user_note(id)
-        if error:
-            return error
-
-        data = request.get_json() or {}
+        note = find_note(id)
+        data = request.get_json()
 
         try:
-            for field in ["title", "content"]:
-                if field in data:
-                    setattr(note, field, data[field])
+            if "title" in data:
+                note.title = data["title"]
+            if "content" in data:
+                note.content = data["content"]
         except ValueError as e:
             db.session.rollback()
             return {"errors": [str(e)]}, 422
@@ -150,10 +132,7 @@ class NoteById(Resource):
         return note_schema.dump(note), 200
 
     def delete(self, id):
-        note, error = find_user_note(id)
-        if error:
-            return error
-
+        note = find_note(id)
         db.session.delete(note)
         db.session.commit()
         return {}, 204

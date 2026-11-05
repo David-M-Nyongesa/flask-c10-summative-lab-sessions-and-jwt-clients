@@ -1,64 +1,27 @@
-# Notes API – Full Auth Flask Backend
+# Notes API
 
-A secure Flask REST API for a personal notes app. Users can sign up, log in, and manage their own notes. Authentication uses **Flask sessions**, passwords are hashed with **Flask-Bcrypt**, and every notes route is protected so users can only see and change their own notes.
+A Flask backend for a simple notes app. Users can sign up, log in and log out, and once logged in they can create, view, edit and delete their own notes. Other users can't see or change your notes.
 
-This backend is built to work with the provided `client-with-sessions` React frontend.
-
-## Tech Stack
-
-- Flask, Flask-RESTful
-- Flask-SQLAlchemy + Flask-Migrate (SQLite)
-- Flask-Bcrypt (password hashing)
-- Marshmallow (serialization)
-- Faker (seed data)
-- Pytest (tests)
-
-## Project Structure
-
-```
-.
-├── Pipfile
-├── README.md
-├── client-with-sessions/   # provided React frontend (sessions)
-├── client-with-jwt/        # provided React frontend (JWT, not used)
-└── server/
-    ├── app.py              # routes / resources
-    ├── config.py           # app, db, bcrypt, api and migrate setup
-    ├── models.py           # User and Note models
-    ├── schemas.py          # Marshmallow schemas
-    ├── seed.py             # sample data
-    ├── migrations/         # Flask-Migrate files
-    ├── pytest.ini
-    └── testing/            # pytest tests
-```
+Login is handled with Flask sessions and passwords are hashed with Flask-Bcrypt. The API works with the `client-with-sessions` React app in this repo.
 
 ## Installation
 
-You need Python 3.8+ and `pipenv`.
+Make sure you have Python 3.8+ and pipenv installed.
 
-1. Clone the repo and move into it:
+```bash
+pipenv install
+pipenv shell
+```
 
-   ```bash
-   git clone <your-repo-url>
-   cd <your-repo-name>
-   ```
+Then set up the database and add some sample data:
 
-2. Install the dependencies and activate the virtual environment:
+```bash
+cd server
+flask db upgrade
+python seed.py
+```
 
-   ```bash
-   pipenv install
-   pipenv shell
-   ```
-
-3. Move into the server folder, create the database and seed it:
-
-   ```bash
-   cd server
-   flask db upgrade
-   python seed.py
-   ```
-
-   The seed creates three users — `alice`, `bob` and `charlie` — all with the password `password123`, plus some notes for each one.
+The seed file creates 3 users (`alice`, `bob` and `charlie`) with some notes each. They all use the password `password123`.
 
 ## Running the App
 
@@ -68,23 +31,15 @@ From the `server` folder:
 python app.py
 ```
 
-or
+The API runs on http://localhost:5555.
 
-```bash
-flask run --port 5555
-```
-
-The API runs on `http://localhost:5555`.
-
-To use the frontend, open a second terminal:
+To try it with the frontend, open another terminal and run:
 
 ```bash
 cd client-with-sessions
 npm install
 npm start
 ```
-
-The frontend runs on `http://localhost:4000` and proxies API requests to port 5555.
 
 ## Running Tests
 
@@ -94,63 +49,42 @@ From the `server` folder:
 pytest
 ```
 
-Tests use an in-memory database, so your `app.db` is never touched.
-
-## API Endpoints
-
-All request and response bodies are JSON. Errors are returned as `{"errors": ["message"]}`.
+## Endpoints
 
 ### Auth
 
-| Method | Endpoint         | Description                                                    | Success | Errors                                   |
-|--------|------------------|----------------------------------------------------------------|---------|------------------------------------------|
-| POST   | `/signup`        | Create a user and log them in                                  | 201     | 422 missing fields, mismatch, taken name |
-| POST   | `/login`         | Log in an existing user                                        | 200     | 401 invalid username or password         |
-| GET    | `/check_session` | Return the logged-in user (keeps users logged in on refresh)   | 200     | 401 returns `{}` when not logged in      |
-| DELETE | `/logout`        | Log out the current user                                       | 204     | 401 not logged in                        |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/signup` | Creates a new user and logs them in. Needs `username`, `password` and `password_confirmation`. Returns 201, or 422 if something is missing, the passwords don't match or the username is taken. |
+| POST | `/login` | Logs in a user. Needs `username` and `password`. Returns 200, or 401 if the details are wrong. |
+| GET | `/check_session` | Returns the logged-in user so they stay logged in after a refresh. Returns 200, or 401 with `{}` if nobody is logged in. |
+| DELETE | `/logout` | Logs the user out. Returns 204. |
 
-**POST `/signup`** body:
-
-```json
-{ "username": "alice", "password": "password123", "password_confirmation": "password123" }
-```
-
-**POST `/login`** body:
-
-```json
-{ "username": "alice", "password": "password123" }
-```
-
-Signup, login and check_session respond with the user:
+Signup, login and check_session return the user like this:
 
 ```json
 { "id": 1, "username": "alice" }
 ```
 
-### Notes (login required)
+### Notes
 
-Every notes route returns `401` if you are not logged in. Trying to view, edit or delete a note that belongs to another user returns `403`.
+You must be logged in to use these routes, otherwise you get a 401. If you try to access a note that belongs to someone else you get a 403.
 
-| Method | Endpoint      | Description                                  | Success | Errors             |
-|--------|---------------|----------------------------------------------|---------|--------------------|
-| GET    | `/notes`      | Get the current user's notes (paginated)     | 200     | 401                |
-| POST   | `/notes`      | Create a note                                | 201     | 401, 422           |
-| GET    | `/notes/<id>` | Get one of the current user's notes          | 200     | 401, 403, 404      |
-| PATCH  | `/notes/<id>` | Update a note's `title` and/or `content`     | 200     | 401, 403, 404, 422 |
-| DELETE | `/notes/<id>` | Delete a note                                | 204     | 401, 403, 404      |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/notes` | Returns your notes, 10 per page. Use `?page=2` to change page and `?per_page=5` to change how many you get (max 50). |
+| POST | `/notes` | Creates a note. Needs `title` and `content`. Returns 201, or 422 if a field is missing. |
+| GET | `/notes/<id>` | Returns one of your notes. |
+| PATCH | `/notes/<id>` | Updates the `title` and/or `content` of a note. |
+| DELETE | `/notes/<id>` | Deletes a note. Returns 204. |
 
-**GET `/notes?page=1&per_page=10`**
-
-- `page` – page number (default `1`)
-- `per_page` – notes per page (default `10`, max `50`)
-
-Response:
+Example response from `GET /notes?page=1&per_page=10`:
 
 ```json
 {
   "notes": [
     {
-      "id": 12,
+      "id": 1,
       "title": "Groceries",
       "content": "Milk, eggs and bread",
       "created_at": "2026-11-04T09:19:47",
@@ -165,31 +99,7 @@ Response:
 }
 ```
 
-**POST `/notes`** body (both fields required, title max 100 characters):
-
-```json
-{ "title": "Groceries", "content": "Milk, eggs and bread" }
-```
-
-**PATCH `/notes/<id>`** body (send only the fields you want to change):
-
-```json
-{ "title": "Shopping list" }
-```
-
 ## Models
 
-**User**
-
-- `id`
-- `username` – required and unique
-- `_password_hash` – bcrypt hash (the plain password is never stored)
-- has many `notes`
-
-**Note**
-
-- `id`
-- `title` – required, max 100 characters
-- `content` – required
-- `created_at`, `updated_at`
-- `user_id` – foreign key to `users.id`
+- **User**: `id`, `username` (unique), `_password_hash`. A user has many notes.
+- **Note**: `id`, `title`, `content`, `created_at`, `updated_at`, `user_id`. A note belongs to a user.
