@@ -10,35 +10,35 @@ def signup(client, username, password="secret"):
 
 
 def test_signup_logs_user_in(client):
-    response = signup(client, "alice")
+    response = signup(client, "David")
     assert response.status_code == 201
-    assert response.get_json()["username"] == "alice"
+    assert response.get_json()["username"] == "David"
 
     assert client.get("/check_session").status_code == 200
 
 
 def test_signup_rejects_duplicate_username(client):
-    signup(client, "alice")
-    response = signup(client, "alice")
+    signup(client, "David")
+    response = signup(client, "David")
     assert response.status_code == 422
 
 
 def test_password_is_hashed(client):
-    signup(client, "alice", "secret")
-    user = User.query.filter_by(username="alice").first()
+    signup(client, "David", "secret")
+    user = User.query.filter_by(username="David").first()
     assert user._password_hash != "secret"
     assert user.authenticate("secret")
 
 
 def test_login_and_logout(client):
-    signup(client, "alice", "secret")
+    signup(client, "David", "secret")
     client.delete("/logout")
     assert client.get("/check_session").status_code == 401
 
-    bad = client.post("/login", json={"username": "alice", "password": "wrong"})
+    bad = client.post("/login", json={"username": "David", "password": "wrong"})
     assert bad.status_code == 401
 
-    good = client.post("/login", json={"username": "alice", "password": "secret"})
+    good = client.post("/login", json={"username": "David", "password": "secret"})
     assert good.status_code == 200
 
 
@@ -48,7 +48,7 @@ def test_notes_require_login(client):
 
 
 def test_notes_crud(client):
-    signup(client, "alice")
+    signup(client, "David")
 
     created = client.post("/notes", json={"title": "Groceries", "content": "Milk"})
     assert created.status_code == 201
@@ -63,7 +63,7 @@ def test_notes_crud(client):
 
 
 def test_notes_are_paginated(client):
-    signup(client, "alice")
+    signup(client, "David")
     for i in range(12):
         client.post("/notes", json={"title": f"Note {i}", "content": "Text"})
 
@@ -75,11 +75,11 @@ def test_notes_are_paginated(client):
 
 
 def test_users_cannot_touch_other_users_notes(client):
-    signup(client, "alice")
+    signup(client, "David")
     note_id = client.post("/notes", json={"title": "Private", "content": "Secret"}).get_json()["id"]
     client.delete("/logout")
 
-    signup(client, "bob")
+    signup(client, "guest")
     assert client.get("/notes").get_json()["total"] == 0
     assert client.get(f"/notes/{note_id}").status_code == 403
     assert client.patch(f"/notes/{note_id}", json={"title": "Hacked"}).status_code == 403
