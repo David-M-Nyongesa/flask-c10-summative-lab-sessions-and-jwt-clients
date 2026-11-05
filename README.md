@@ -1,12 +1,10 @@
 # Notes API
 
-A Flask backend for a simple notes app. Users can sign up, log in and log out, and once logged in they can create, view, edit and delete their own notes. Other users can't see or change your notes.
-
+A Flask backend for a simple notes app.
 Login is handled with Flask sessions and passwords are hashed with Flask-Bcrypt. The API works with the `client-with-sessions` React app in this repo.
 
 ## Installation
 
-Make sure you have Python 3.8+ and pipenv installed.
 
 ```bash
 pipenv install
@@ -21,7 +19,7 @@ flask db upgrade
 python seed.py
 ```
 
-The seed file creates 3 users (`alice`, `bob` and `charlie`) with some notes each. They all use the password `password123`.
+The seed file creates one user, `David`, with 15 sample notes. The password is `password123`.
 
 ## Running the App
 
@@ -63,7 +61,7 @@ pytest
 Signup, login and check_session return the user like this:
 
 ```json
-{ "id": 1, "username": "alice" }
+{ "id": 1, "username": "David" }
 ```
 
 ### Notes
